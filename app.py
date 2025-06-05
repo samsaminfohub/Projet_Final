@@ -425,37 +425,173 @@ def show_maintenance(sensor_data):
     )
     st.plotly_chart(fig_risk, use_container_width=True)
 
+
 def save_anomalies_to_db(anomalies_df):
-    """Sauvegarde les anomalies détectées en base"""
-    
-    engine = get_db_connection()
-    
-    for _, row in anomalies_df.iterrows():
-        # Détermination de la sévérité
-        score = abs(row['anomaly_score'])
-        if score > 0.5:
-            severity = 'CRITICAL'
-        elif score > 0.3:
-            severity = 'HIGH'
-        elif score > 0.1:
-            severity = 'MEDIUM'
-        else:
-            severity = 'LOW'
+    """
+    Save detected anomalies to the database
+    """
+    try:
+        engine = get_db_connection()
         
-        # Insertion en base
-        query = """
-        INSERT INTO anomalies (sensor_id, anomaly_type, anomaly_score, severity, description)
-        VALUES (%s, %s, %s, %s, %s)
-        """
+        # Convert DataFrame to list of dictionaries for proper parameter formatting
+        anomalies_list = anomalies_df.to_dict('records')
         
         with engine.connect() as conn:
-            conn.execute(query, (
-                row['sensor_id'],
-                'Statistical Anomaly',
-                float(row['anomaly_score']),
-                severity,
-                f"Anomalie détectée avec un score de {row['anomaly_score']:.3f}"
-            ))
+            # Create table if it doesn't exist
+            create_table_query = """
+            CREATE TABLE IF NOT EXISTS anomalies (
+                id SERIAL PRIMARY KEY,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                temperature FLOAT,
+                humidity FLOAT,
+                pressure FLOAT,
+                vibration_x FLOAT,
+                vibration_y FLOAT,
+                vibration_z FLOAT,
+                current FLOAT,
+                voltage FLOAT,
+                power FLOAT,
+                anomaly_score FLOAT,
+                is_anomaly BOOLEAN
+            )
+            """
+            conn.execute(create_table_query)
+            
+            # Insert anomalies using proper parameter formatting
+            insert_query = """
+            INSERT INTO anomalies (
+                temperature, humidity, pressure, vibration_x, vibration_y, 
+                vibration_z, current, voltage, power, anomaly_score, is_anomaly
+            ) VALUES (
+                :temperature, :humidity, :pressure, :vibration_x, :vibration_y,
+                :vibration_z, :current, :voltage, :power, :anomaly_score, :is_anomaly
+            )
+            """
+            
+            # Execute the query with proper parameter formatting
+            for anomaly in anomalies_list:
+                conn.execute(insert_query, {
+                    'temperature': float(anomaly.get('temperature', 0)),
+                    'humidity': float(anomaly.get('humidity', 0)),
+                    'pressure': float(anomaly.get('pressure', 0)),
+                    'vibration_x': float(anomaly.get('vibration_x', 0)),
+                    'vibration_y': float(anomaly.get('vibration_y', 0)),
+                    'vibration_z': float(anomaly.get('vibration_z', 0)),
+                    'current': float(anomaly.get('current', 0)),
+                    'voltage': float(anomaly.get('voltage', 0)),
+                    'power': float(anomaly.get('power', 0)),
+                    'anomaly_score': float(anomaly.get('anomaly_score', 0)),
+                    'is_anomaly': bool(anomaly.get('is_anomaly', False))
+                })
+            
+            conn.commit()
+            st.success(f"✅ {len(anomalies_list)} anomalies saved to database")
+            
+    except Exception as e:
+        st.error(f"❌ Error saving anomalies to database: {str(e)}")
+        print(f"Database error: {str(e)}")
+
+# Alternative approach using executemany for better performance
+def save_anomalies_to_db_batch(anomalies_df):
+    """
+    Save detected anomalies to the database using batch insert
+    """
+    try:
+        engine = get_db_connection()
+        
+        with engine.connect() as conn:
+            # Create table if it doesn't exist
+            create_table_query = """
+            CREATE TABLE IF NOT EXISTS anomalies (
+                id SERIAL PRIMARY KEY,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                temperature FLOAT,
+                humidity FLOAT,
+                pressure FLOAT,
+                vibration_x FLOAT,
+                vibration_y FLOAT,
+                vibration_z FLOAT,
+                current FLOAT,
+                voltage FLOAT,
+                power FLOAT,
+                anomaly_score FLOAT,
+                is_anomaly BOOLEAN
+            )
+            """
+            conn.execute(create_table_query)
+            
+            # Prepare data for batch insert
+            columns = ['temperature', 'humidity', 'pressure', 'vibration_x', 'vibration_y', 
+                      'vibration_z', 'current', 'voltage', 'power', 'anomaly_score', 'is_anomaly']
+            
+            # Convert DataFrame to list of tuples
+            data_tuples = []
+            for _, row in anomalies_df.iterrows():
+                tuple_data = tuple(float(row.get(col, 0)) if col != 'is_anomaly' 
+                                 else bool(row.get(col, False)) for col in columns)
+                data_tuples.append(tuple_data)
+            
+            # Insert using executemany with proper parameterized query
+            insert_query = """
+            INSERT INTO anomalies (
+                temperature, humidity, pressure, vibration_x, vibration_y, 
+                vibration_z, current, voltage, power, anomaly_score, is_anomaly
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            
+            # Use the raw connection for executemany
+            raw_conn = conn.connection
+            cursor = raw_conn.cursor()
+            cursor.executemany(insert_query, data_tuples)
+            raw_conn.commit()
+            cursor.close()
+            
+            st.success(f"✅ {len(data_tuples)} anomalies saved to database")
+            
+    except Exception as e:
+        st.error(f"❌ Error saving anomalies to database: {str(e)}")
+        print(f"Database error: {str(e)}")
+
+# Using pandas to_sql method (recommended approach)
+def save_anomalies_to_db_pandas(anomalies_df):
+    """
+    Save detected anomalies to the database using pandas to_sql
+    """
+    try:
+        engine = get_db_connection()
+        
+        # Prepare the DataFrame
+        df_to_save = anomalies_df.copy()
+        
+        # Ensure proper data types
+        numeric_columns = ['temperature', 'humidity', 'pressure', 'vibration_x', 'vibration_y', 
+                          'vibration_z', 'current', 'voltage', 'power', 'anomaly_score']
+        
+        for col in numeric_columns:
+            if col in df_to_save.columns:
+                df_to_save[col] = pd.to_numeric(df_to_save[col], errors='coerce').fillna(0)
+        
+        if 'is_anomaly' in df_to_save.columns:
+            df_to_save['is_anomaly'] = df_to_save['is_anomaly'].astype(bool)
+        
+        # Add timestamp if not present
+        if 'timestamp' not in df_to_save.columns:
+            df_to_save['timestamp'] = pd.Timestamp.now()
+        
+        # Save to database using pandas to_sql
+        df_to_save.to_sql(
+            'anomalies', 
+            engine, 
+            if_exists='append', 
+            index=False,
+            method='multi'
+        )
+        
+        st.success(f"✅ {len(df_to_save)} anomalies saved to database")
+        
+    except Exception as e:
+        st.error(f"❌ Error saving anomalies to database: {str(e)}")
+        print(f"Database error: {str(e)}")
 
 if __name__ == "__main__":
     main()
