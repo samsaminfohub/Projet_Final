@@ -481,7 +481,7 @@ def check_and_create_anomalies_table(engine):
         print(f"Error checking/creating table: {e}")
         raise
 
-def save_anomalies_to_db_fixed(anomalies_df):
+def save_anomalies_to_db(anomalies_df):
     """
     Save detected anomalies to the database with proper error handling
     """
