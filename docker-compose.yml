@@ -1,0 +1,114 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    container_name: iot_postgres
+    environment:
+      POSTGRES_DB: iot_anomaly_db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - iot_network
+
+  # PgAdmin
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: iot_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - iot_network
+
+  # MLflow Tracking Server
+  mlflow:
+    image: python:3.9-slim
+    container_name: iot_mlflow
+    command: >
+      bash -c "
+        pip install mlflow psycopg2-binary &&
+        mlflow server --backend-store-uri postgresql://admin:admin123@postgres:5432/iot_anomaly_db --default-artifact-root /mlflow/artifacts --host 0.0.0.0 --port 5000
+      "
+    ports:
+      - "5000:5000"
+    depends_on:
+      - postgres
+    volumes:
+      - mlflow_data:/mlflow
+    networks:
+      - iot_network
+
+  # Streamlit Application
+  streamlit_app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: iot_streamlit
+    ports:
+      - "8501:8501"
+    depends_on:
+      - postgres
+      - mlflow
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=iot_anomaly_db
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin123
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    volumes:
+      - ./data:/app/data
+    networks:
+      - iot_network
+
+  # Portainer (Docker Management)
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: iot_portainer
+    ports:
+      - "9000:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    networks:
+      - iot_network
+
+  # Data Generator (Simule des données IoT)
+  data_generator:
+    build:
+      context: .
+      dockerfile: Dockerfile.generator
+    container_name: iot_data_generator
+    depends_on:
+      - postgres
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=iot_anomaly_db
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin123
+    networks:
+      - iot_network
+
+volumes:
+  postgres_data:
+  pgadmin_data:
+  mlflow_data:
+  portainer_data:
+
+networks:
+  iot_network:
+    driver: bridge
