@@ -5,7 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import psycopg2
-from sqlalchemy import create_engine,text
+from sqlalchemy import create_engine,text,inspect
 import mlflow
 import mlflow.sklearn
 from sklearn.ensemble import IsolationForest
@@ -425,108 +425,256 @@ def show_maintenance(sensor_data):
     )
     st.plotly_chart(fig_risk, use_container_width=True)
 
-
-def save_anomalies_to_db(anomalies_df):
+def check_and_create_anomalies_table(engine):
     """
-    Save detected anomalies to the database - SIMPLE FIX
+    Check if anomalies table exists and create/recreate it with correct schema
+    """
+    try:
+        with engine.begin() as conn:
+            # Check if table exists
+            inspector = inspect(engine)
+            table_exists = 'anomalies' in inspector.get_table_names()
+            
+            if table_exists:
+                # Get existing columns
+                existing_columns = [col['name'] for col in inspector.get_columns('anomalies')]
+                print(f"Existing columns: {existing_columns}")
+                
+                # Required columns
+                required_columns = [
+                    'temperature', 'humidity', 'pressure', 'vibration_x', 'vibration_y', 
+                    'vibration_z', 'current', 'voltage', 'power', 'anomaly_score', 'is_anomaly'
+                ]
+                
+                # Check if all required columns exist
+                missing_columns = [col for col in required_columns if col not in existing_columns]
+                
+                if missing_columns:
+                    print(f"Missing columns: {missing_columns}")
+                    # Drop and recreate table
+                    conn.execute(text("DROP TABLE IF EXISTS anomalies"))
+                    table_exists = False
+            
+            if not table_exists:
+                # Create table with correct schema
+                create_table_query = text("""
+                    CREATE TABLE anomalies (
+                        id SERIAL PRIMARY KEY,
+                        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        temperature DOUBLE PRECISION,
+                        humidity DOUBLE PRECISION,
+                        pressure DOUBLE PRECISION,
+                        vibration_x DOUBLE PRECISION,
+                        vibration_y DOUBLE PRECISION,
+                        vibration_z DOUBLE PRECISION,
+                        current DOUBLE PRECISION,
+                        voltage DOUBLE PRECISION,
+                        power DOUBLE PRECISION,
+                        anomaly_score DOUBLE PRECISION,
+                        is_anomaly BOOLEAN
+                    )
+                """)
+                conn.execute(create_table_query)
+                print("Anomalies table created successfully")
+                
+    except Exception as e:
+        print(f"Error checking/creating table: {e}")
+        raise
+
+def save_anomalies_to_db_fixed(anomalies_df):
+    """
+    Save detected anomalies to the database with proper error handling
     """
     try:
         engine = get_db_connection()
         
-        with engine.begin() as conn: 
-            create_table_query = text("""
-                CREATE TABLE IF NOT EXISTS anomalies (
-                    id SERIAL PRIMARY KEY,
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    temperature FLOAT,
-                    humidity FLOAT,
-                    pressure FLOAT,
-                    vibration_x FLOAT,
-                    vibration_y FLOAT,
-                    vibration_z FLOAT,
-                    current FLOAT,
-                    voltage FLOAT,
-                    power FLOAT,
-                    anomaly_score FLOAT,
-                    is_anomaly BOOLEAN
-                )
-            """)
-            conn.execute(create_table_query)
-            
-            # Prepare the DataFrame for insertion
-            df_clean = anomalies_df.copy()
-            
-            # Ensure we have all required columns with default values
-            required_columns = {
-                'temperature': 0.0,
-                'humidity': 0.0, 
-                'pressure': 0.0,
-                'vibration_x': 0.0,
-                'vibration_y': 0.0,
-                'vibration_z': 0.0,
-                'current': 0.0,
-                'voltage': 0.0,
-                'power': 0.0,
-                'anomaly_score': 0.0,
-                'is_anomaly': False
-            }
-            
-            for col, default_val in required_columns.items():
-                if col not in df_clean.columns:
-                    df_clean[col] = default_val
+        # First, ensure the table exists with correct schema
+        check_and_create_anomalies_table(engine)
+        
+        # Prepare the DataFrame
+        df_clean = anomalies_df.copy()
+        
+        # Print DataFrame info for debugging
+        print("DataFrame columns:", df_clean.columns.tolist())
+        print("DataFrame shape:", df_clean.shape)
+        print("DataFrame head:")
+        print(df_clean.head())
+        
+        # Define the exact columns we need
+        required_columns = {
+            'temperature': 'float64',
+            'humidity': 'float64',
+            'pressure': 'float64',
+            'vibration_x': 'float64',
+            'vibration_y': 'float64',
+            'vibration_z': 'float64',
+            'current': 'float64',
+            'voltage': 'float64',
+            'power': 'float64',
+            'anomaly_score': 'float64',
+            'is_anomaly': 'bool'
+        }
+        
+        # Create a new DataFrame with only the required columns
+        df_to_save = pd.DataFrame()
+        
+        for col, dtype in required_columns.items():
+            if col in df_clean.columns:
+                if dtype == 'bool':
+                    df_to_save[col] = df_clean[col].astype(bool)
                 else:
-                    # Clean the data
-                    if col == 'is_anomaly':
-                        df_clean[col] = df_clean[col].astype(bool)
-                    else:
-                        df_clean[col] = pd.to_numeric(df_clean[col], errors='coerce').fillna(default_val)
-            
-            # Use pandas to_sql - it handles SQLAlchemy compatibility automatically
-            df_clean[list(required_columns.keys())].to_sql(
-                'anomalies',
-                conn,
-                if_exists='append',
-                index=False,
-                method='multi'
-            )
-            
-            st.success(f"✅ {len(df_clean)} anomalies saved to database successfully!")
-            
+                    df_to_save[col] = pd.to_numeric(df_clean[col], errors='coerce').fillna(0.0)
+            else:
+                # Set default values for missing columns
+                if dtype == 'bool':
+                    df_to_save[col] = False
+                else:
+                    df_to_save[col] = 0.0
+        
+        # Add timestamp
+        df_to_save['timestamp'] = pd.Timestamp.now()
+        
+        print("Final DataFrame to save:")
+        print(df_to_save.head())
+        print("Data types:")
+        print(df_to_save.dtypes)
+        
+        # Save to database
+        df_to_save.to_sql(
+            'anomalies',
+            engine,
+            if_exists='append',
+            index=False,
+            method='multi'
+        )
+        
+        st.success(f"✅ {len(df_to_save)} anomalies saved to database successfully!")
+        
     except Exception as e:
         st.error(f"❌ Error saving anomalies to database: {str(e)}")
         print(f"Detailed error: {e}")
+        print(f"Error type: {type(e)}")
 
-# Alternative ultra-simple approach using only pandas
-def save_anomalies_simple(anomalies_df):
+def debug_dataframe_columns(df):
     """
-    Ultra-simple approach using only pandas to_sql
+    Debug function to check DataFrame structure
+    """
+    print("=== DataFrame Debug Info ===")
+    print(f"Shape: {df.shape}")
+    print(f"Columns: {df.columns.tolist()}")
+    print(f"Data types:\n{df.dtypes}")
+    print(f"Sample data:\n{df.head()}")
+    print("=== End Debug Info ===")
+
+# Alternative approach: Manual column mapping
+def save_anomalies_manual_mapping(anomalies_df):
+    """
+    Save anomalies with manual column mapping to handle column name mismatches
     """
     try:
         engine = get_db_connection()
         
-        # Clean and prepare data
-        df_to_save = anomalies_df.copy()
+        # Ensure table exists
+        check_and_create_anomalies_table(engine)
         
-        # Add timestamp if missing
-        if 'timestamp' not in df_to_save.columns:
-            df_to_save['timestamp'] = pd.Timestamp.now()
+        # Debug the input DataFrame
+        debug_dataframe_columns(anomalies_df)
         
-        # Convert boolean columns properly
-        if 'is_anomaly' in df_to_save.columns:
-            df_to_save['is_anomaly'] = df_to_save['is_anomaly'].astype(bool)
+        # Column mapping - adjust these based on your actual DataFrame columns
+        column_mapping = {
+            # Map your actual column names to database column names
+            'temp': 'temperature',           # if your column is 'temp'
+            'hum': 'humidity',              # if your column is 'hum'
+            'press': 'pressure',            # if your column is 'press'
+            'vib_x': 'vibration_x',         # if your column is 'vib_x'
+            'vib_y': 'vibration_y',         # if your column is 'vib_y'
+            'vib_z': 'vibration_z',         # if your column is 'vib_z'
+            'curr': 'current',              # if your column is 'curr'
+            'volt': 'voltage',              # if your column is 'volt'
+            'pow': 'power',                 # if your column is 'pow'
+            'score': 'anomaly_score',       # if your column is 'score'
+            'anomaly': 'is_anomaly'         # if your column is 'anomaly'
+        }
         
-        # Let pandas handle everything
-        df_to_save.to_sql(
+        # Create DataFrame with proper column names
+        df_mapped = pd.DataFrame()
+        
+        for original_col, db_col in column_mapping.items():
+            if original_col in anomalies_df.columns:
+                df_mapped[db_col] = anomalies_df[original_col]
+        
+        # Add missing columns with defaults
+        required_db_columns = [
+            'temperature', 'humidity', 'pressure', 'vibration_x', 'vibration_y',
+            'vibration_z', 'current', 'voltage', 'power', 'anomaly_score', 'is_anomaly'
+        ]
+        
+        for col in required_db_columns:
+            if col not in df_mapped.columns:
+                if col == 'is_anomaly':
+                    df_mapped[col] = True  # Assuming these are all anomalies
+                else:
+                    df_mapped[col] = 0.0
+        
+        # Clean data types
+        for col in df_mapped.columns:
+            if col == 'is_anomaly':
+                df_mapped[col] = df_mapped[col].astype(bool)
+            else:
+                df_mapped[col] = pd.to_numeric(df_mapped[col], errors='coerce').fillna(0.0)
+        
+        # Save to database
+        df_mapped.to_sql(
             'anomalies',
             engine,
             if_exists='append',
             index=False
         )
         
-        st.success(f"✅ {len(df_to_save)} anomalies saved!")
+        st.success(f"✅ {len(df_mapped)} anomalies saved successfully!")
         
     except Exception as e:
-        st.error(f"❌ Database error: {str(e)}")
+        st.error(f"❌ Error: {str(e)}")
+        print(f"Detailed error: {e}")
+
+# Simple troubleshooting function
+def troubleshoot_database():
+    """
+    Troubleshoot database connection and table structure
+    """
+    try:
+        engine = get_db_connection()
+        
+        with engine.connect() as conn:
+            # Check if table exists
+            result = conn.execute(text("""
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_schema = 'public' AND table_name = 'anomalies'
+            """))
+            table_exists = result.fetchone() is not None
+            
+            print(f"Anomalies table exists: {table_exists}")
+            
+            if table_exists:
+                # Get table structure
+                result = conn.execute(text("""
+                    SELECT column_name, data_type 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'anomalies'
+                    ORDER BY ordinal_position
+                """))
+                columns = result.fetchall()
+                print("Table structure:")
+                for col in columns:
+                    print(f"  {col[0]}: {col[1]}")
+            
+            # Test connection
+            result = conn.execute(text("SELECT 1"))
+            print(f"Database connection test: {result.fetchone()[0]}")
+            
+    except Exception as e:
+        print(f"Troubleshooting error: {e}")
 
 if __name__ == "__main__":
     main()
