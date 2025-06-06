@@ -3,16 +3,33 @@ import requests
 
 API_URL = "http://backend:8000"
 
-st.title("📝 Task Manager")
+st.title("💰 Smart Budget")
 
-task = st.text_input("Enter a task:")
-if st.button("Add Task"):
-    r = requests.post(f"{API_URL}/tasks/", json={"title": task})
+email = st.text_input("Email")
+password = st.text_input("Password", type="password")
+token = ""
+
+if st.button("Login"):
+    r = requests.post(f"{API_URL}/auth/login", json={"email": email, "password": password})
     if r.status_code == 200:
-        st.success("Task added!")
+        token = r.json()["access_token"]
+        st.success("Logged in!")
+    else:
+        st.error("Login failed")
 
-st.write("## All Tasks")
-resp = requests.get(f"{API_URL}/tasks/")
-if resp.status_code == 200:
-    for task in resp.json():
-        st.write(f"- {task['title']}")
+st.header("Add Transaction")
+tx_type = st.selectbox("Type", ["income", "expense"])
+category = st.text_input("Category")
+amount = st.number_input("Amount", min_value=0.0)
+
+if st.button("Add Transaction"):
+    tx = {"type": tx_type, "category": category, "amount": amount}
+    r = requests.post(f"{API_URL}/transactions/", json=tx)
+    if r.status_code == 200:
+        st.success("Transaction added!")
+
+st.header("All Transactions")
+r = requests.get(f"{API_URL}/transactions/")
+if r.status_code == 200:
+    for tx in r.json():
+        st.write(f"{tx['timestamp']} - {tx['type']} - {tx['category']} - {tx['amount']} €")
