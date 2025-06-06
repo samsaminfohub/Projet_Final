@@ -1,5 +1,7 @@
 FROM python:3.11
+
 WORKDIR /app
-COPY backend/ /app
-RUN pip install -r requirements.txt
+COPY . .
+RUN pip install fastapi uvicorn sqlalchemy psycopg2-binary pydantic
+
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
