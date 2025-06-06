@@ -1,7 +1,11 @@
-FROM python:3.11
+FROM golang:1.17-alpine3.15 as builder
+COPY go.mod go.sum /go/src/fullstack/backend/
+WORKDIR /go/src/fullstack/backend
+RUN go mod download
+COPY . /go/src/fullstack/backend
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o build/app fullstack/backend
 
-WORKDIR /app
-COPY . .
-RUN pip install fastapi uvicorn sqlalchemy psycopg2-binary passlib[bcrypt] python-jose
-
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+FROM alpine
+RUN apk add --no-cache ca-certificates && update-ca-certificates
+COPY --from=builder /go/src/fullstack/backend/build/app /usr/bin/app
+ENTRYPOINT ["/usr/bin/app"]
