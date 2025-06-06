@@ -3,63 +3,40 @@ version: '3.8'
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: minilab2_postgres
     environment:
-      POSTGRES_DB: minilab2
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password123
-      PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_USER: minilabuser
+      POSTGRES_PASSWORD: minilabpass
+      POSTGRES_DB: minilab
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
     ports:
       - "5432:5432"
-    networks:
-      - minilab2_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U minilabuser -d minilab"]
+      interval: 5s
       timeout: 5s
       retries: 5
 
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: minilab2_backend
-    environment:
-      DATABASE_URL: postgresql://postgres:password123@postgres:5432/minilab2
-      PYTHONPATH: /app
+    build: ./backend
     ports:
       - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
-    networks:
-      - minilab2_network
-    volumes:
-      - ./backend:/app
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      DATABASE_URL: "postgresql://minilabuser:minilabpass@postgres/minilab"
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: minilab2_frontend
-    environment:
-      BACKEND_URL: http://backend:8000
+    build: ./frontend
     ports:
       - "8501:8501"
     depends_on:
       - backend
-    networks:
-      - minilab2_network
-    volumes:
-      - ./frontend:/app
+    environment:
+      BACKEND_URL: "http://backend:8000"
 
 volumes:
   postgres_data:
-
-networks:
-  minilab2_network:
-    driver: bridge
+                        
