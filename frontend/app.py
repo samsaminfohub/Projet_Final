@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 
-API_URL = "http://backend:8000"
+API_URL = "http://20.62.91.133:8000"
 
 st.title("Gestionnaire de tâches")
 if st.button("Afficher les tâches"):
