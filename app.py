@@ -53,6 +53,7 @@ def load_sensor_data(hours_back=24):
     WHERE sd.timestamp >= NOW() - INTERVAL '{hours_back} hours'
     ORDER BY sd.timestamp DESC
     """
+
     return pd.read_sql(query, engine)
 
 @st.cache_data(ttl=60)
