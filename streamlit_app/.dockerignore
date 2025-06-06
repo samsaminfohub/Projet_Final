@@ -1,7 +1,0 @@
-__pycache__
-.pytest_cache
-.cache
-venv
-env
-coverage
-*_logs
