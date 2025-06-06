@@ -40,7 +40,7 @@ services:
     depends_on:
       - postgres
     networks:
-      - recommander-net
+      - recommender-net
 
   backend:
     build:
