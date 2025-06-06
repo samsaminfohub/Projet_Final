@@ -2,87 +2,64 @@ version: '3.8'
 
 services:
   postgres:
-    image: postgres:13
-    env_file:
-      - .env
+    image: postgres:15-alpine
+    container_name: minilab2_postgres
+    environment:
+      POSTGRES_DB: minilab2
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password123
+      PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "5432:5432"
     networks:
-      - recommender-net
-
-  pgadmin:
-    image: dpage/pgadmin4
-    env_file:
-      - .env
-    ports:
-      - "5050:80"
-    depends_on:
-      - postgres
-    networks:
-      - recommender-net
-
-  mlflow:
-    build:
-      context: ./mlflow
-    env_file:
-      - .env
-    ports:
-      - "5000:5000"
-    volumes:
-      - mlflow_artifacts:/mlflow
-    depends_on:
-      - postgres
-    networks:
-      - recommender-net
+      - minilab2_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   backend:
     build:
       context: ./backend
-    env_file:
-      - .env
+      dockerfile: Dockerfile
+    container_name: minilab2_backend
+    environment:
+      DATABASE_URL: postgresql://postgres:password123@postgres:5432/minilab2
+      PYTHONPATH: /app
     ports:
       - "8000:8000"
-    volumes:
-      - ./data:/app/data
     depends_on:
       postgres:
         condition: service_healthy
-      mlflow:
-        condition: service_started
     networks:
-      - recommender-net
+      - minilab2_network
+    volumes:
+      - ./backend:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
   frontend:
     build:
       context: ./frontend
-    env_file:
-      - .env
+      dockerfile: Dockerfile
+    container_name: minilab2_frontend
+    environment:
+      BACKEND_URL: http://backend:8000
     ports:
       - "8501:8501"
-    volumes:
-      - ./data:/app/data
     depends_on:
       - backend
     networks:
-      - recommender-net
-
-  portainer:
-    image: portainer/portainer-ce
-    ports:
-      - "9000:9000"
+      - minilab2_network
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - portainer_data:/data
-    networks:
-      - recommender-net
+      - ./frontend:/app
 
 volumes:
   postgres_data:
-  mlflow_artifacts:
-  portainer_data:
 
 networks:
-  recommender-net:
+  minilab2_network:
     driver: bridge
