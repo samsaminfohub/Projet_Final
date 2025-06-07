@@ -3,9 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 import os
 
-from .models.database import engine, SessionLocal, Base
-from .routes import predictions, auth
-from .services.ml_service import MLService
+from models.database import engine, SessionLocal, Base
+from routes import predictions, auth
+from services.ml_service import MLService
 
 # Create database tables
 Base.metadata.create_all(bind=engine)

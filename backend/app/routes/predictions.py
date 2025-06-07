@@ -4,10 +4,10 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
 
-from ..models.database import get_db
-from ..models.mental_health import Prediction
-from ..services.ml_service import MLService
-from ..services.database_service import DatabaseService
+from models.database import get_db
+from models.mental_health import Prediction
+from services.ml_service import MLService
+from services.database_service import DatabaseService
 
 router = APIRouter()
 

@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 from typing import List, Optional
 
-from ..models.mental_health import User, Prediction
+from models.mental_health import User, Prediction
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
