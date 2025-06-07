@@ -4,8 +4,9 @@
 -- PostgreSQL crée automatiquement la base définie dans POSTGRES_DB
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
-    username VARCHAR(150) NOT NULL UNIQUE,
+    name VARCHAR(150) NOT NULL UNIQUE,
     email VARCHAR(255) NOT NULL UNIQUE,
+    age SERIAL ,
     password_hash TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
