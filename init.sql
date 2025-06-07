@@ -49,26 +49,5 @@ CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
 CREATE INDEX IF NOT EXISTS idx_products_price ON products(price);
 CREATE INDEX IF NOT EXISTS idx_products_created_at ON products(created_at);
 
--- Création d'une vue pour les statistiques rapides
-CREATE OR REPLACE VIEW stats_view AS
-SELECT 
-    (SELECT COUNT(*) FROM users) as total_users,
-    (SELECT COUNT(*) FROM products) as total_products,
-    (SELECT COUNT(DISTINCT category) FROM products) as total_categories,
-    (SELECT ROUND(AVG(age), 2) FROM users) as avg_user_age,
-    (SELECT ROUND(AVG(price), 2) FROM products) as avg_product_price;
 
--- Création d'une fonction pour obtenir les statistiques par catégorie
-CREATE OR REPLACE FUNCTION get_category_stats()
-RETURNS TABLE(category_name VARCHAR, product_count BIGINT, avg_price NUMERIC) AS $
-BEGIN
-    RETURN QUERY
-    SELECT 
-        p.category::VARCHAR as category_name,
-        COUNT(*)::BIGINT as product_count,
-        ROUND(AVG(p.price), 2) as avg_price
-    FROM products p
-    GROUP BY p.category
-    ORDER BY product_count DESC;
-END;
-$ LANGUAGE plpgsql;
+
