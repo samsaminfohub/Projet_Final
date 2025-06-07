@@ -1,52 +1,66 @@
-version: "3.8"
+version: '3.8'
 
 services:
-  postgres:
-    image: postgres:15
+  backend:
+    build: ./backend
+    container_name: backend
+    ports:
+      - "8000:8000"
+    networks:
+      - app-network
+
+  frontend:
+    build: ./frontend
+    container_name: frontend
+    ports:
+      - "8501:8501"
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
+  db:
+    image: postgres:13
+    container_name: postgres
     environment:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
-      POSTGRES_DB: mentalhealth
+      POSTGRES_DB: mental_health_db
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    networks:
+      - app-network
 
   pgadmin:
     image: dpage/pgadmin4
+    container_name: pgadmin
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@admin.com
       PGADMIN_DEFAULT_PASSWORD: admin
     ports:
       - "5050:80"
     depends_on:
-      - postgres
-
-  backend:
-    build: ./backend
-    ports:
-      - "8000:8000"
-    depends_on:
-      - postgres
-    environment:
-      - DATABASE_URL=postgresql://user:password@postgres:5432/mentalhealth
-
-  streamlit:
-    build: ./frontend
-    ports:
-      - "8501:8501"
-    depends_on:
-      - backend
+      - db
+    networks:
+      - app-network
 
   portainer:
     image: portainer/portainer-ce
-    command: -H unix:///var/run/docker.sock
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - portainer_data:/data
+    container_name: portainer
     ports:
       - "9000:9000"
+    volumes:
+      - portainer_data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - app-network
 
 volumes:
-  pgdata:
+  postgres_data:
   portainer_data:
+
+networks:
+  app-network:
+    driver: bridge
