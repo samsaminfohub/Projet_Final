@@ -1,45 +1,49 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
 import os
-import joblib
-import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.datasets import make_classification
-from sklearn.model_selection import train_test_split
 
-app = FastAPI()
+from .models.database import engine, SessionLocal, Base
+from .routes import predictions, auth
+from .services.ml_service import MLService
 
-MODEL_PATH = "model.pkl"
+# Create database tables
+Base.metadata.create_all(bind=engine)
 
-# Schéma de la requête
-class Features(BaseModel):
-    feature1: float
-    feature2: float
+app = FastAPI(
+    title="Mental Health Predictor API",
+    description="API for predicting mental health risks based on lifestyle factors",
+    version="2.0.0"
+)
 
-# Entraînement automatique si le modèle n’existe pas
-def train_and_save_model():
-    X, y = make_classification(n_samples=1000, n_features=2, n_informative=2,
-                               n_redundant=0, random_state=42)
-    df = pd.DataFrame(X, columns=["feature1", "feature2"])
-    df["target"] = y
-    X_train, _, y_train, _ = train_test_split(df[["feature1", "feature2"]],
-                                              df["target"], test_size=0.2, random_state=42)
-    model = RandomForestClassifier()
-    model.fit(X_train, y_train)
-    joblib.dump(model, MODEL_PATH)
-    print("✅ Modèle entraîné et sauvegardé.")
-    return model
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:8501", "http://frontend:8501"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# Chargement ou entraînement du modèle
-if os.path.exists(MODEL_PATH):
-    model = joblib.load(MODEL_PATH)
-    print("✅ Modèle chargé depuis model.pkl")
-else:
-    model = train_and_save_model()
+# Initialize ML service
+ml_service = MLService()
 
-# Endpoint de prédiction
-@app.post("/predict/")
-def predict(features: Features):
-    data = [[features.feature1, features.feature2]]
-    prediction = model.predict(data)
-    return {"prediction": int(prediction[0])}
+# Dependency to get DB session
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# Include routers
+app.include_router(predictions.router, prefix="/api/v1", tags=["predictions"])
+app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
+
+@app.get("/")
+async def root():
+    return {"message": "Mental Health Predictor API", "version": "2.0.0"}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
