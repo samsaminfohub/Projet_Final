@@ -74,7 +74,7 @@ services:
     environment:
       FASTAPI_URL: http://fastapi:8000
     ports:
-      - "8501:8501"
+      - "8502:8501"
     networks:
       - app_network
     depends_on:
