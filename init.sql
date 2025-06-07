@@ -10,6 +10,16 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS products (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    price NUMERIC(10, 2) NOT NULL,
+    category VARCHAR(255) ,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
 -- Insertion de données d'exemple pour les utilisateurs
 INSERT INTO users (name, email, age, created_at) VALUES
 ('Alice Martin', 'alice@example.com', 28, NOW()),
