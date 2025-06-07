@@ -1,96 +1,70 @@
-version: '3.8'
+version: "3.8"
 
 services:
-  postgres:
-    image: postgres:15
-    container_name: mental_health_postgres
+  db:
+    image: postgres:14
     environment:
-      POSTGRES_DB: mental_health_db
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: bookcatalogdb
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+      - pgdata:/var/lib/postgresql/data
     networks:
-      - mental_health_network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      - backend-network
 
   pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: mental_health_pgadmin
+    image: dpage/pgadmin4
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
       PGADMIN_DEFAULT_PASSWORD: admin
-      PGADMIN_CONFIG_SERVER_MODE: 'False'
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
     ports:
-      - "5050:80"
-    networks:
-      - mental_health_network
+      - "8081:80"
     depends_on:
-      - postgres
+      - db
+    networks:
+      - backend-network
 
   backend:
-    build: ./backend
-    container_name: mental_health_backend
+    build:
+      context: .
+      dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgresql://postgres:password@postgres:5432/mental_health_db
-      SECRET_KEY: your-secret-key-here
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: bookcatalogdb
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+    depends_on:
+      - db
     ports:
       - "8000:8000"
-    volumes:
-      - ./backend:/app
-      - backend_models:/app/models
     networks:
-      - mental_health_network
-    depends_on:
-      postgres:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      - backend-network
 
   frontend:
-    build: ./frontend
-    container_name: mental_health_frontend
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "8501:8501"
-    volumes:
-      - ./frontend:/app
-    networks:
-      - mental_health_network
     depends_on:
-      backend:
-        condition: service_healthy
-    environment:
-      - API_BASE_URL=http://backend:8000/api/v1
+      - backend
+    networks:
+      - backend-network
 
   portainer:
-    image: portainer/portainer-ce:latest
-    container_name: mental_health_portainer
-    restart: unless-stopped
+    image: portainer/portainer-ce
+    command: -H unix:///var/run/docker.sock
     ports:
       - "9000:9000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - portainer_data:/data
     networks:
-      - mental_health_network
-
-networks:
-  mental_health_network:
-    driver: bridge
+      - backend-network
 
 volumes:
-  postgres_data:
-  pgadmin_data:
-  portainer_data:
-  backend_models:
+  pgdata:
+
+networks:
+  backend-network:
+    driver: bridge
