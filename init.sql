@@ -7,7 +7,6 @@ CREATE TABLE IF NOT EXISTS users (
     name VARCHAR(150) NOT NULL UNIQUE,
     email VARCHAR(255) NOT NULL UNIQUE,
     age SERIAL ,
-    password_hash TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
